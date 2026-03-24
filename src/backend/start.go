@@ -134,6 +134,7 @@ func (a *App) Start(ctx context.Context) (err error) {
 	}()
 
 	a.startSubscriptionSyncLoop(newCtx, errChan)
+	a.startMemoryReleaseLoop(newCtx)
 
 	linkUpdateChannel, linkUpdateDone, err := subscribeLinkUpdates()
 	if err != nil {
@@ -218,4 +219,29 @@ func (a *App) getInterfaceAddresses() ([]netlink.Addr, error) {
 		addrList = append(addrList, linkAddrList...)
 	}
 	return addrList, nil
+}
+
+// startMemoryReleaseLoop periodically forces the Go runtime to return freed
+// heap memory to the OS. On embedded routers with limited RAM this prevents
+// the process RSS from growing after heavy sync operations even though the
+// Go GC has already freed the objects internally.
+func (a *App) startMemoryReleaseLoop(ctx context.Context) {
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				// FreeOSMemory first triggers a full GC, then releases all free
+				// heap spans back to the OS. This call briefly blocks the caller
+				// goroutine while GC and scavenging run; 5-minute intervals keep
+				// the overhead negligible while preventing RSS from ratcheting up
+				// on memory-constrained embedded routers.
+				debug.FreeOSMemory()
+			}
+		}
+	}()
 }
