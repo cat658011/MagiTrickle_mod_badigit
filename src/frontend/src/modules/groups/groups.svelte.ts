@@ -161,17 +161,6 @@ export class GroupsStore {
       });
 
       $effect(() => {
-        this.dataRevision;
-        if (typeof window === "undefined") return;
-        setTimeout(() => this.checkRulesValidityState(), 10);
-      });
-
-      $effect(() => {
-        this.dataRevision;
-        this.syncSelectedGroups();
-      });
-
-      $effect(() => {
         const query = this.normalizedSearch;
         this.dataRevision;
         this.data.length;
@@ -573,8 +562,15 @@ export class GroupsStore {
 
   markDataRevision = () => {
     this.dataRevision += 1;
+    if (typeof window !== "undefined") {
+      setTimeout(() => this.checkRulesValidityState(), 10);
+    }
   };
 
+  // Note: syncSelectedGroups() is not called from markDataRevision because
+  // deleteGroup() already removes deleted groups from selectedGroupIds inline,
+  // and overwriteGroups() calls clearGroupSelection(). Calling it on every
+  // markDataRevision (e.g. every keystroke) was a performance bottleneck.
   syncSelectedGroups() {
     if (!this.selectedGroupIds.size) return;
 
