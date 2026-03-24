@@ -316,3 +316,37 @@ func TestGetAliasesUnknownDomain(t *testing.T) {
 		t.Fatal("unknown domain should return only itself")
 	}
 }
+
+// TestCleanupNilsTailElements verifies that cleanupRecords properly nils out
+// the tail of the backing array after compacting expired entries, so that
+// expired *Address objects can be garbage collected and do not leak memory.
+func TestCleanupNilsTailElements(t *testing.T) {
+	r := New()
+	// Add three addresses: the first two expire immediately, the third stays valid.
+	r.AddAddress("example.com", []byte{1, 1, 1, 1}, 0) // expires
+	r.AddAddress("example.com", []byte{2, 2, 2, 2}, 0) // expires
+	r.AddAddress("example.com", []byte{3, 3, 3, 3}, 60) // valid
+
+	time.Sleep(time.Second)
+	r.cleanupRecords()
+
+	r.locker.RLock()
+	addresses := r.addresses["example.com"]
+	r.locker.RUnlock()
+
+	if len(addresses) != 1 {
+		t.Fatalf("expected 1 valid address after cleanup, got %d", len(addresses))
+	}
+	if !bytes.Equal(addresses[0].Address, []byte{3, 3, 3, 3}) {
+		t.Fatal("wrong address kept after cleanup")
+	}
+
+	// Verify that tail elements in the backing array are nil so that expired
+	// *Address objects can be garbage collected.
+	backing := addresses[:cap(addresses)]
+	for i := 1; i < len(backing); i++ {
+		if backing[i] != nil {
+			t.Fatalf("backing array element at index %d should be nil after cleanup to prevent memory leak, got %v", i, backing[i])
+		}
+	}
+}

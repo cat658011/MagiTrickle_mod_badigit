@@ -192,6 +192,12 @@ func (r *Records) cleanupRecords() {
 		if idx == 0 {
 			delete(r.addresses, name)
 		} else {
+			// Nil out tail elements to allow GC to collect expired *Address objects.
+			// Without this, the backing array retains non-nil pointers to expired
+			// objects beyond the slice length, preventing garbage collection.
+			for i := idx; i < len(addresses); i++ {
+				addresses[i] = nil
+			}
 			r.addresses[name] = addresses[:idx]
 		}
 	}
